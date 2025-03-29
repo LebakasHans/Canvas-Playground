@@ -1,95 +1,71 @@
 import type { BasicTransformEvent, Canvas, FabricObject, TPointerEvent } from 'fabric';
+import type { ShallowRef } from 'vue';
 
-export function useCanvasObjectClamping(canvas: Ref<Canvas | null>) {
-  const scalingProperties = {
-    left: 0,
-    top: 0,
-    scaleX: 0,
-    scaleY: 0,
-  };
+export function useCanvasObjectClamping(canvas: ShallowRef<Canvas | null>) {
 
-  function clampScaling(e: BasicTransformEvent<TPointerEvent> & { target: FabricObject }) {
-    if (!e.target || !canvas.value)
+  function clampObject(obj: FabricObject) {
+    if (!canvas.value)
       return;
-
-    const shape = e.target;
-    const maxWidth = canvas.value.getWidth();
-    const maxHeight = canvas.value.getHeight();
-
-    // left border
-    if (shape.left! < 0) {
-      shape.left = scalingProperties.left;
-      shape.scaleX = scalingProperties.scaleX;
-    }
-    else {
-      scalingProperties.left = shape.left!;
-      scalingProperties.scaleX = shape.scaleX!;
-    }
-
-    // right border
-    if (scalingProperties.scaleX * shape.width! + shape.left! >= maxWidth) {
-      shape.scaleX = (maxWidth - scalingProperties.left) / shape.width!;
-    }
-    else {
-      scalingProperties.scaleX = shape.scaleX!;
-    }
-
-    // top border
-    if (shape.top! < 0) {
-      shape.top = scalingProperties.top;
-      shape.scaleY = scalingProperties.scaleY;
-    }
-    else {
-      scalingProperties.top = shape.top!;
-      scalingProperties.scaleY = shape.scaleY!;
-    }
-
-    // bottom border
-    if (scalingProperties.scaleY * shape.height! + shape.top! >= maxHeight) {
-      shape.scaleY = (maxHeight - scalingProperties.top) / shape.height!;
-    }
-    else {
-      scalingProperties.scaleY = shape.scaleY!;
-    }
-  }
-
-  function clampMovementAndRotation(e: BasicTransformEvent<TPointerEvent> & { target: FabricObject }) {
-    if (!e.target || !canvas.value)
-      return;
-    const obj = e.target;
-    if (obj.height! > canvas.value.getHeight() || obj.width! > canvas.value.getWidth()) {
-      return;
-    }
+    
+    const canvasWidth = canvas.value.getWidth();
+    const canvasHeight = canvas.value.getHeight();
+    
+    // Update coordinates based on current state
     obj.setCoords();
-    // top-left corner
-    if (obj.getBoundingRect().top < 0 || obj.getBoundingRect().left < 0) {
-      obj.top = Math.max(obj.top!, obj.top! - obj.getBoundingRect().top);
-      obj.left = Math.max(obj.left!, obj.left! - obj.getBoundingRect().left);
+    
+    // Get the bounding rect which accounts for rotation
+    const boundingRect = obj.getBoundingRect();
+    
+    let adjusted = false;
+    let adjustedTop = obj.top!;
+    let adjustedLeft = obj.left!;
+    
+    // Adjust top position if needed
+    if (boundingRect.top < 0) {
+      adjustedTop += Math.abs(boundingRect.top);
+      adjusted = true;
+    } else if (boundingRect.top + boundingRect.height > canvasHeight) {
+      adjustedTop -= (boundingRect.top + boundingRect.height) - canvasHeight;
+      adjusted = true;
     }
-    // bottom-right corner
-    if (
-      obj.getBoundingRect().top + obj.getBoundingRect().height > canvas.value.getHeight()
-      || obj.getBoundingRect().left + obj.getBoundingRect().width > canvas.value.getWidth()
-    ) {
-      obj.top = Math.min(
-        obj.top!,
-        canvas.value.getHeight() - obj.getBoundingRect().height + obj.top! - obj.getBoundingRect().top,
-      );
-      obj.left = Math.min(
-        obj.left!,
-        canvas.value.getWidth() - obj.getBoundingRect().width + obj.left! - obj.getBoundingRect().left,
-      );
+    
+    // Adjust left position if needed
+    if (boundingRect.left < 0) {
+      adjustedLeft += Math.abs(boundingRect.left);
+      adjusted = true;
+    } else if (boundingRect.left + boundingRect.width > canvasWidth) {
+      adjustedLeft -= (boundingRect.left + boundingRect.width) - canvasWidth;
+      adjusted = true;
+    }
+    
+    // Apply adjustments if needed
+    if (adjusted) {
+      obj.set({
+        top: adjustedTop,
+        left: adjustedLeft
+      });
+      obj.setCoords();
     }
   }
 
+  function handleTransform(e: CanvasObjectClampEvent) {
+    if (!e.target || !canvas.value)
+      return;
+  
+    //TODO: If the object is to large to fit in the canvas, we should scale it to its previous size
+    clampObject(e.target);
+  }
+  
   function attachClampingHandlers() {
     if (!canvas.value)
       return;
-
-    canvas.value.on('object:scaling', clampScaling);
-    canvas.value.on('object:moving', clampMovementAndRotation);
-    canvas.value.on('object:rotating', clampMovementAndRotation);
+  
+    canvas.value.on('object:scaling', handleTransform);
+    canvas.value.on('object:moving', handleTransform);
+    canvas.value.on('object:rotating', handleTransform);
   }
 
   return { attachClampingHandlers };
 }
+
+type CanvasObjectClampEvent = BasicTransformEvent<TPointerEvent> & { target: FabricObject };

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FabricObject } from 'fabric';
 
+//TODO: get activeObject from canvas and pass it to ObjectPropertyList
 const activeObject = ref<FabricObject | null>(null);
 </script>
 
